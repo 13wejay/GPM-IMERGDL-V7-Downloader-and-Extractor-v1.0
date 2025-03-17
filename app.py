@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import xarray as xr
 import numpy as np
 import re
+import concurrent.futures
 
 from datetime import datetime, timedelta
 from requests.auth import HTTPBasicAuth
@@ -41,28 +42,19 @@ def handle_shapefile_upload(zip_bytes):
 
 # Function to download subsetted IMERG data
 def download_subset_imerg(date, download_dir, token, bbox):
-    """Downloads IMERG subsetted data from OPeNDAP using correct grid ordering."""
+    """Downloads IMERG subsetted data from OPeNDAP using multi-threading."""
     year, month, day = date.strftime("%Y"), date.strftime("%m"), date.strftime("%d")
     min_lon, min_lat, max_lon, max_lat = bbox
 
-    # Convert lat/lon to IMERG OPeNDAP grid indices
-    def lat_to_index(lat):
-        return int(round((lat + 90) / 0.1)) - 1
+    def lat_to_index(lat): return int(round((lat + 90) / 0.1)) - 1
+    def lon_to_index(lon): return int(round((lon + 180) / 0.1))
 
-    def lon_to_index(lon):
-        return int(round((lon + 180) / 0.1))
+    lon_min_idx, lon_max_idx = lon_to_index(min_lon), lon_to_index(max_lon)
+    lat_min_idx, lat_max_idx = lat_to_index(min_lat), lat_to_index(max_lat)
 
-    # Get correctly ordered lat/lon indices
-    lon_min_idx = lon_to_index(min_lon)
-    lon_max_idx = lon_to_index(max_lon)
-    lat_min_idx = lat_to_index(min_lat)
-    lat_max_idx = lat_to_index(max_lat) 
-
-    # Construct OPeNDAP URL using correct IMERG indexing
     filename = f"3B-DAY-L.MS.MRG.3IMERG.{year}{month}{day}-S000000-E235959.V07B.nc4"
     subset_url = f"{BASE_URL}/{year}/{month}/{filename}.nc4?precipitation[0:0][{lon_min_idx}:{lon_max_idx}][{lat_min_idx}:{lat_max_idx}],time,lon[{lon_min_idx}:{lon_max_idx}],lat[{lat_min_idx}:{lat_max_idx}]"
-    
-    # Define save path
+
     save_path = os.path.join(download_dir, f"IMERG_Subset_{year}{month}{day}.nc4")
 
     if os.path.exists(save_path):
@@ -70,7 +62,6 @@ def download_subset_imerg(date, download_dir, token, bbox):
 
     headers = {"Authorization": f"Bearer {token}"}
 
-    # Download subset file
     with requests.get(subset_url, headers=headers, stream=True) as response:
         if response.status_code == 200:
             total_size = int(response.headers.get('content-length', 0))
@@ -87,6 +78,13 @@ def download_subset_imerg(date, download_dir, token, bbox):
             return save_path
         else:
             return None
+
+# Multi-threaded download manager
+def download_all_imerg(dates, download_dir, token, bbox):
+    """Downloads multiple IMERG files in parallel using threading."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:  # Adjust max_workers if needed
+        results = list(executor.map(lambda date: download_subset_imerg(date, download_dir, token, bbox), dates))
+    return results
 
 # Function to extract precipitation data
 def extract_precipitation(nc_directory, csv_file, output_excel):
@@ -169,9 +167,11 @@ def main():
 
             st.write("Downloading and extracting data...")
             
-            # Download and extract data
-            dates = [datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=i) for i in range((datetime.strptime(end_date, "%Y-%m-%d") - datetime.strptime(start_date, "%Y-%m-%d")).days + 1)]
-            results = [download_subset_imerg(date, download_dir, DEFAULT_TOKEN, bbox) for date in dates]
+            # Multi-threaded IMERG download
+            dates = [datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=i) for i in range(
+                (datetime.strptime(end_date, "%Y-%m-%d") - datetime.strptime(start_date, "%Y-%m-%d")).days + 1)]
+
+            download_all_imerg(dates, download_dir, DEFAULT_TOKEN, bbox)
 
             # Extract precipitation data
             output_excel = os.path.join(download_dir, "IMERG_Extracted.xlsx")
