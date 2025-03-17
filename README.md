@@ -1,5 +1,8 @@
 # IMERG Data Downloader & Extractor
 
+![Python](https://img.shields.io/badge/Python-3.x-blue)  
+![License](https://img.shields.io/badge/License-MIT-green)  
+
 This repository contains a Python-based tool for downloading and extracting GPM IMERG V07 precipitation data using OPeNDAP, Streamlit, and shapefile-based area selection. It supports NASA Earthdata authentication and CSV coordinate-based data extraction.
 
 ## Features
@@ -57,6 +60,6 @@ Pull requests are welcome! For major changes, open an issue first to discuss you
 
 ## Acknowledgments
 - **NASA GPM IMERG** dataset
-- **Hugging Face Spaces & Streamlit** for deployment support
+- **Streamlit** for deployment support
 - **xarray & geopandas** for geospatial data handling
 
