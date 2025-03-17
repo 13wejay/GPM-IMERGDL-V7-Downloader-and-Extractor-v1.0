@@ -1,0 +1,14 @@
+streamlit
+requests
+pandas
+geopandas
+numpy
+xarray
+rioxarray
+tqdm
+cartopy
+matplotlib
+netcdf4
+h5netcdf
+h5py
+openpyxl
