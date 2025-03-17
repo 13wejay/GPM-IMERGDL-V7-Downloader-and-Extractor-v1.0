@@ -22,16 +22,17 @@ DEFAULT_USERNAME = "wijaya_hydro"
 DEFAULT_PASSWORD = "@huggingface4Free"
 DEFAULT_TOKEN = "eyJ0eXAiOiJKV1QiLCJvcmlnaW4iOiJFYXJ0aGRhdGEgTG9naW4iLCJzaWciOiJlZGxqd3RwdWJrZXlfb3BzIiwiYWxnIjoiUlMyNTYifQ.eyJ0eXBlIjoiVXNlciIsInVpZCI6IndpamF5YV9oeWRybyIsImV4cCI6MTc0NzI4MDA5NCwiaWF0IjoxNzQyMDk2MDk0LCJpc3MiOiJodHRwczovL3Vycy5lYXJ0aGRhdGEubmFzYS5nb3YiLCJpZGVudGl0eV9wcm92aWRlciI6ImVkbF9vcHMiLCJhY3IiOiJlZGwiLCJhc3N1cmFuY2VfbGV2ZWwiOjN9.kSdpjDTrv5vfG0Z2XU9APcxJ7AO0QZIhyM86aHWI468bparlRnJlQ72G-KMGxEILhEj4tGbTWM9QbGd6lC7fJ-MTQgDtH0D0G9EuhQ6xIOtdoMaqTqd3vRxoV3eVXHMkkLldJjrs2ISSNRoy9zvcg-S3yVljfHW_RLnc-l-EKDnRcG8EwMudMnWWl5P84tMZ5dTMApzu0hp4kAPkXjNBuG9mAKjBGcf8cydEopvLsIsHxUysFMHYL_XozvykEiX2YTN3fSLH4hk4K1eg7CABJoqxGK0o4aVV8jjqTFJWwgfPs4FOozQh8nGJ8b5_rCd3vukuVi2exm9CHTsWgW4Swg"
 
-# Function to create a ZIP file for user download
+# Function to handle donwloadable ZIP file
 def create_download_zip(output_dir, zip_filename):
-    """Creates a ZIP file containing all extracted data for user download."""
+    """Creates a ZIP file containing all extracted data for user download, excluding other ZIP files."""
     zip_path = os.path.join(output_dir, zip_filename)
     
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
         for root, _, files in os.walk(output_dir):
             for file in files:
-                file_path = os.path.join(root, file)
-                zipf.write(file_path, os.path.basename(file_path))
+                if not file.endswith(".zip"):
+                    file_path = os.path.join(root, file)
+                    zipf.write(file_path, os.path.basename(file_path))
     
     return zip_path
     
