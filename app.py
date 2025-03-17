@@ -120,16 +120,29 @@ def extract_precipitation(nc_directory, csv_file, output_excel):
         names=["ID", "Lon", "Lat"]
     )
     formatted_df.to_excel(output_excel)
+    
+# Function to create a ZIP file for user download
+def create_download_zip(output_dir, zip_filename):
+    """Creates a ZIP file containing all extracted data for user download."""
+    zip_path = os.path.join(output_dir, zip_filename)
+    
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, _, files in os.walk(output_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                zipf.write(file_path, os.path.basename(file_path))
+    
+    return zip_path
 
-# Main Streamlit Interface
+# Streamlit Interface
 def main():
     st.title("GPM IMERGDL V7 Downloader and Extractor v1.0")
-    st.write("Download, extract, and plot GPM IMERGDL V7 data for a specified date range and area.")
+    st.write("Download, extract, and analyze GPM IMERGDL V7 data for a specified date range and area.")
 
     # Inputs for date range and file uploads
     start_date = st.text_input("Start Date (YYYY-MM-DD)", value="2025-01-01")
     end_date = st.text_input("End Date (YYYY-MM-DD)", value="2025-01-31")
-    shapefile_zip = st.file_uploader("Upload Shapefile (ZIP) Specific Area", type="zip")
+    shapefile_zip = st.file_uploader("Upload Shapefile (ZIP) for Specific Area", type="zip")
     csv_file = st.file_uploader("Upload CSV File with Coordinates (ID,Lon,Lat)", type="csv")
 
     if st.button("Download and Process"):
@@ -137,15 +150,16 @@ def main():
             st.error("Please fill in all fields and upload all required files.")
             return
 
-        download_dir = os.path.join(os.path.expanduser("~"), "Downloads", "IMERG_Downloads")
+        download_dir = "IMERG_Downloads"
         os.makedirs(download_dir, exist_ok=True)
 
         try:
+            st.write("Processing shapefile and extracting bounding box...")
             # Process shapefile
             shapefile_path = handle_shapefile_upload(shapefile_zip.getvalue())
             gdf = gpd.read_file(shapefile_path).to_crs(epsg=4326)
             bbox = gdf.total_bounds  
-            st.write(f"Bounding Box: {bbox[0]:.6f}, {bbox[1]:.6f}, {bbox[2]:.6f}, {bbox[3]:.6f}")
+            st.write(f"Bounding Box: {bbox}")
 
             # Plot shapefile boundary
             fig, ax = plt.subplots(figsize=(6, 6))
@@ -162,8 +176,17 @@ def main():
             # Extract precipitation data
             output_excel = os.path.join(download_dir, "IMERG_Extracted.xlsx")
             extract_precipitation(download_dir, csv_file, output_excel)
-            
-            st.success(f"Download and extraction complete! Check {download_dir}.")
+
+            # Create ZIP file for download
+            zip_filename = "IMERG_Extracted.zip"
+            zip_path = create_download_zip(download_dir, zip_filename)
+
+            st.success("Download and extraction complete!")
+
+            # Provide download button
+            with open(zip_path, "rb") as f:
+                st.download_button("Download Extracted Data", f, file_name=zip_filename)
+
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
 
