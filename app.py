@@ -14,7 +14,6 @@ import concurrent.futures
 from datetime import datetime, timedelta
 from requests.auth import HTTPBasicAuth
 from tqdm import tqdm
-from users_db import UserDatabase
 
 # Base OPeNDAP URL for IMERG
 BASE_URL = "https://gpm1.gesdisc.eosdis.nasa.gov/opendap/GPM_L3/GPM_3IMERGDL.07"
@@ -23,45 +22,6 @@ BASE_URL = "https://gpm1.gesdisc.eosdis.nasa.gov/opendap/GPM_L3/GPM_3IMERGDL.07"
 DEFAULT_USERNAME = "wijaya_hydro"
 DEFAULT_PASSWORD = "@huggingface4Free"
 DEFAULT_TOKEN = "eyJ0eXAiOiJKV1QiLCJvcmlnaW4iOiJFYXJ0aGRhdGEgTG9naW4iLCJzaWciOiJlZGxqd3RwdWJrZXlfb3BzIiwiYWxnIjoiUlMyNTYifQ.eyJ0eXBlIjoiVXNlciIsInVpZCI6IndpamF5YV9oeWRybyIsImV4cCI6MTc2OTY4NDQzOSwiaWF0IjoxNzY0NTAwNDM5LCJpc3MiOiJodHRwczovL3Vycy5lYXJ0aGRhdGEubmFzYS5nb3YiLCJpZGVudGl0eV9wcm92aWRlciI6ImVkbF9vcHMiLCJhY3IiOiJlZGwiLCJhc3N1cmFuY2VfbGV2ZWwiOjN9.uDv6hlCaK7KRctbLZHNFMBdy2efdNmGnhRUk_er6sXgoUYLrIET84BQ36Q4MvaRcoT7ZIMWHQBPaPOTAmDrS3OVqcQiQeMT28MlX3sowkiuSkx4-G1Zvqf9BR8SC3Nvb1uXI6f5cKY3l3l2Vq1_qE16Cztko_RGg0ofvGlEcDNRfl_uHvttLNbhQjHRERQljd5vbqymhbAISy8259LbIl9m7BKKmi5mVbi6TS-h8viG4BnIgx488OmWSZ1m_WU4iJdUms711UEok0MMC1JmPUCjbB_4nwMPKMOLrMCx32gEBjCwIC3nPvvV8ZzNRjcJ2NqE2MJOI8drdUn3I8QbWEA"
-
-# Initialize user database
-user_db = UserDatabase()
-
-# Initialize session state
-def init_session_state():
-    """Initialize Streamlit session state variables."""
-    if 'logged_in' not in st.session_state:
-        st.session_state.logged_in = False
-    if 'username' not in st.session_state:
-        st.session_state.username = None
-    if 'show_register' not in st.session_state:
-        st.session_state.show_register = False
-
-def login_user(username: str, password: str) -> bool:
-    """Login a user."""
-    if user_db.authenticate(username, password) and user_db.is_user_active(username):
-        st.session_state.logged_in = True
-        st.session_state.username = username
-        return True
-    return False
-
-def logout_user():
-    """Logout the current user."""
-    st.session_state.logged_in = False
-    st.session_state.username = None
-
-def register_user(username: str, password: str, email: str) -> tuple[bool, str]:
-    """Register a new user."""
-    if len(username) < 3:
-        return False, "Username must be at least 3 characters"
-    if len(password) < 6:
-        return False, "Password must be at least 6 characters"
-    if "@" not in email:
-        return False, "Invalid email address"
-    
-    if user_db.register_user(username, password, email):
-        return True, "Registration successful! Please login."
-    return False, "Username already exists"
 
 # Function to handle shapefile upload
 def handle_shapefile_upload(zip_bytes):
@@ -174,113 +134,7 @@ def create_download_zip(output_dir, zip_filename):
     
 # Streamlit Interface
 def main():
-    st.set_page_config(page_title="GPM IMERGDL V7 Downloader", layout="wide")
-    init_session_state()
-    
-    # Check if user is logged in
-    if not st.session_state.logged_in:
-        show_login_page()
-    else:
-        show_main_app()
-
-def show_login_page():
-    """Display login and registration page."""
-    st.title("🌧️ GPM IMERGDL V7 Downloader and Extractor v1.0")
-    st.write("Please login or register to access the downloader.")
-    
-    # Toggle between login and registration
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        if st.button("Login", use_container_width=True, type="primary" if not st.session_state.show_register else "secondary"):
-            st.session_state.show_register = False
-            st.rerun()
-    
-    with col2:
-        if st.button("Register", use_container_width=True, type="primary" if st.session_state.show_register else "secondary"):
-            st.session_state.show_register = True
-            st.rerun()
-    
-    st.markdown("---")
-    
-    if st.session_state.show_register:
-        # Registration form
-        st.subheader("📝 Register New Account")
-        with st.form("register_form"):
-            reg_username = st.text_input("Username", max_chars=50)
-            reg_email = st.text_input("Email", max_chars=100)
-            reg_password = st.text_input("Password", type="password", max_chars=100)
-            reg_password_confirm = st.text_input("Confirm Password", type="password", max_chars=100)
-            
-            st.info("🔹 Default limits: 10 downloads/day, 100 downloads/month")
-            
-            submit_register = st.form_submit_button("Create Account", use_container_width=True)
-            
-            if submit_register:
-                if reg_password != reg_password_confirm:
-                    st.error("Passwords do not match!")
-                elif not all([reg_username, reg_email, reg_password]):
-                    st.error("Please fill in all fields!")
-                else:
-                    success, message = register_user(reg_username, reg_password, reg_email)
-                    if success:
-                        st.success(message)
-                        st.session_state.show_register = False
-                        st.rerun()
-                    else:
-                        st.error(message)
-    else:
-        # Login form
-        st.subheader("🔐 Login")
-        with st.form("login_form"):
-            login_username = st.text_input("Username")
-            login_password = st.text_input("Password", type="password")
-            
-            submit_login = st.form_submit_button("Login", use_container_width=True)
-            
-            if submit_login:
-                if login_user(login_username, login_password):
-                    st.success(f"Welcome back, {login_username}!")
-                    st.rerun()
-                else:
-                    st.error("Invalid username or password, or account is inactive.")
-
-def show_main_app():
-    """Display the main application after login."""
-    # Header with user info
-    col1, col2 = st.columns([3, 1])
-    
-    with col1:
-        st.title("🌧️ GPM IMERGDL V7 Downloader and Extractor v1.0")
-    
-    with col2:
-        if st.button("🚪 Logout", use_container_width=True):
-            logout_user()
-            st.rerun()
-    
-    # Display user quota information
-    user_info = user_db.get_user_info(st.session_state.username)
-    if user_info:
-        st.sidebar.header(f"👤 {user_info['username']}")
-        st.sidebar.write(f"📧 {user_info['email']}")
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("📊 Download Quota")
-        
-        daily_remaining = user_info['daily_limit'] - user_info['daily_downloads']
-        monthly_remaining = user_info['monthly_limit'] - user_info['monthly_downloads']
-        
-        # Daily quota
-        st.sidebar.write(f"**Daily:** {user_info['daily_downloads']}/{user_info['daily_limit']}")
-        st.sidebar.progress(user_info['daily_downloads'] / user_info['daily_limit'])
-        st.sidebar.write(f"Remaining today: {daily_remaining}")
-        
-        st.sidebar.markdown("---")
-        
-        # Monthly quota
-        st.sidebar.write(f"**Monthly:** {user_info['monthly_downloads']}/{user_info['monthly_limit']}")
-        st.sidebar.progress(user_info['monthly_downloads'] / user_info['monthly_limit'])
-        st.sidebar.write(f"Remaining this month: {monthly_remaining}")
-    
+    st.title("GPM IMERGDL V7 Downloader and Extractor v1.0")
     st.write("Download, extract, and analyze GPM IMERGDL V7 data for a specified date range and area.")
 
     # Inputs for date range and file uploads
@@ -289,31 +143,15 @@ def show_main_app():
     shapefile_zip = st.file_uploader("Upload Shapefile (ZIP) for Specific Area", type="zip")
     csv_file = st.file_uploader("Upload CSV File with Coordinates (ID,Lon,Lat)", type="csv")
 
-    if st.button("Download and Process", type="primary"):
+    if st.button("Download and Process"):
         if not all([start_date, end_date, shapefile_zip, csv_file]):
             st.error("Please fill in all fields and upload all required files.")
             return
 
-        try:
-            # Calculate number of files to download
-            dates = [datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=i) for i in range(
-                (datetime.strptime(end_date, "%Y-%m-%d") - datetime.strptime(start_date, "%Y-%m-%d")).days + 1)]
-            
-            num_files = len(dates)
-            
-            # Check download limits
-            can_download, reason = user_db.can_download(st.session_state.username, num_files)
-            
-            if not can_download:
-                st.error(f"❌ Download limit exceeded: {reason}")
-                st.warning(f"You are trying to download {num_files} files.")
-                return
-            
-            st.info(f"ℹ️ This will download {num_files} files and count against your quota.")
-            
-            download_dir = "IMERG_Downloads"
-            os.makedirs(download_dir, exist_ok=True)
+        download_dir = "IMERG_Downloads"
+        os.makedirs(download_dir, exist_ok=True)
 
+        try:
             st.write("Processing shapefile and extracting bounding box...")
             # Process shapefile
             shapefile_path = handle_shapefile_upload(shapefile_zip.getvalue())
@@ -330,6 +168,9 @@ def show_main_app():
             st.write("Downloading and extracting data...")
             
             # Multi-threaded IMERG download
+            dates = [datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=i) for i in range(
+                (datetime.strptime(end_date, "%Y-%m-%d") - datetime.strptime(start_date, "%Y-%m-%d")).days + 1)]
+
             download_all_imerg(dates, download_dir, DEFAULT_TOKEN, bbox)
 
             # Extract precipitation data
@@ -339,19 +180,12 @@ def show_main_app():
             # Create ZIP file for download
             zip_filename = "IMERG_Extracted.zip"
             zip_path = create_download_zip(download_dir, zip_filename)
-            
-            # Record the download
-            user_db.record_download(st.session_state.username, num_files)
 
-            st.success("✅ Download and extraction complete!")
-            st.info(f"📥 {num_files} files downloaded and recorded.")
+            st.success("Download and extraction complete!")
 
             # Provide download button
             with open(zip_path, "rb") as f:
-                st.download_button("📦 Download Extracted Data", f, file_name=zip_filename, type="primary")
-            
-            # Update quota display
-            st.rerun()
+                st.download_button("Download Extracted Data", f, file_name=zip_filename)
 
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
