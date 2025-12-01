@@ -14,6 +14,9 @@ This repository contains a Python-based tool for downloading and extracting GPM 
 - 🔍 **CSV Coordinate Extraction**: Extracts precipitation values based on provided CSV points.
 - 📊 **Formatted Excel Output**: Saves data in a structured multi-row format.
 - 🖥 **Streamlit UI**: Provides a user-friendly interface.
+- 🔐 **User Authentication & Quota System**: Track and limit downloads per user (NEW!)
+- 📈 **Usage Monitoring**: Real-time quota tracking with daily and monthly limits (NEW!)
+- 👨‍💼 **Admin Panel**: Manage users and quotas (NEW!)
 
 ## Installation
 Ensure you have Python 3.10+ installed, then clone this repository:
@@ -37,6 +40,25 @@ Run the Streamlit app:
 ```bash
 streamlit run app.py
 ```
+
+### Quota System (NEW!)
+The application now includes a comprehensive quota management system:
+
+#### For New Users:
+1. **Register** in the sidebar with username, email, and password
+2. Default quotas: 100 files/day, 1000 files/month
+3. **Login** to access the downloader
+4. Monitor your quota usage in real-time
+
+#### For Admins:
+1. Access the **Admin Panel** with password: `admin123` (⚠️ change this!)
+2. View all users and their statistics
+3. Modify user quotas as needed
+
+📚 **Documentation:**
+- **Start Here**: [Documentation Index](DOCUMENTATION_INDEX.md) - Complete guide to all docs
+- Quick Start: See [docs/QUICKSTART_QUOTA.md](docs/QUICKSTART_QUOTA.md)
+- Full Documentation: See [docs/QUOTA_SYSTEM.md](docs/QUOTA_SYSTEM.md)
 
 ### Required Inputs
 - **NASA Earthdata credentials** (set up in `.env` or Streamlit UI)
