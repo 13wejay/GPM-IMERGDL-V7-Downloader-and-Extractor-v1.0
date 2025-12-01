@@ -10,6 +10,9 @@ import xarray as xr
 import numpy as np
 import re
 import concurrent.futures
+import json
+import hashlib
+from pathlib import Path
 
 from datetime import datetime, timedelta
 from requests.auth import HTTPBasicAuth
@@ -22,6 +25,159 @@ BASE_URL = "https://gpm1.gesdisc.eosdis.nasa.gov/opendap/GPM_L3/GPM_3IMERGDL.07"
 DEFAULT_USERNAME = "wijaya_hydro"
 DEFAULT_PASSWORD = "@huggingface4Free"
 DEFAULT_TOKEN = "eyJ0eXAiOiJKV1QiLCJvcmlnaW4iOiJFYXJ0aGRhdGEgTG9naW4iLCJzaWciOiJlZGxqd3RwdWJrZXlfb3BzIiwiYWxnIjoiUlMyNTYifQ.eyJ0eXBlIjoiVXNlciIsInVpZCI6IndpamF5YV9oeWRybyIsImV4cCI6MTc2OTY4NDQzOSwiaWF0IjoxNzY0NTAwNDM5LCJpc3MiOiJodHRwczovL3Vycy5lYXJ0aGRhdGEubmFzYS5nb3YiLCJpZGVudGl0eV9wcm92aWRlciI6ImVkbF9vcHMiLCJhY3IiOiJlZGwiLCJhc3N1cmFuY2VfbGV2ZWwiOjN9.uDv6hlCaK7KRctbLZHNFMBdy2efdNmGnhRUk_er6sXgoUYLrIET84BQ36Q4MvaRcoT7ZIMWHQBPaPOTAmDrS3OVqcQiQeMT28MlX3sowkiuSkx4-G1Zvqf9BR8SC3Nvb1uXI6f5cKY3l3l2Vq1_qE16Cztko_RGg0ofvGlEcDNRfl_uHvttLNbhQjHRERQljd5vbqymhbAISy8259LbIl9m7BKKmi5mVbi6TS-h8viG4BnIgx488OmWSZ1m_WU4iJdUms711UEok0MMC1JmPUCjbB_4nwMPKMOLrMCx32gEBjCwIC3nPvvV8ZzNRjcJ2NqE2MJOI8drdUn3I8QbWEA"
+
+# Quota System Configuration
+QUOTA_DB_FILE = "quota_database.json"
+DEFAULT_DAILY_QUOTA = 100  # Default daily download limit (number of files)
+DEFAULT_MONTHLY_QUOTA = 1000  # Default monthly download limit (number of files)
+ADMIN_PASSWORD = "wijaya13"  # Change this in production!
+
+# Quota Management Class
+class QuotaManager:
+    def __init__(self, db_file=QUOTA_DB_FILE):
+        self.db_file = db_file
+        self.data = self.load_database()
+    
+    def load_database(self):
+        """Load user quota database from JSON file."""
+        if os.path.exists(self.db_file):
+            with open(self.db_file, 'r') as f:
+                return json.load(f)
+        return {"users": {}, "admin_hash": self.hash_password(ADMIN_PASSWORD)}
+    
+    def save_database(self):
+        """Save user quota database to JSON file."""
+        with open(self.db_file, 'w') as f:
+            json.dump(self.data, f, indent=2)
+    
+    @staticmethod
+    def hash_password(password):
+        """Hash password using SHA-256."""
+        return hashlib.sha256(password.encode()).hexdigest()
+    
+    def create_user(self, username, email, password, daily_quota=None, monthly_quota=None):
+        """Create a new user with quota limits."""
+        if username in self.data["users"]:
+            return False, "Username already exists"
+        
+        self.data["users"][username] = {
+            "email": email,
+            "password_hash": self.hash_password(password),
+            "daily_quota": daily_quota or DEFAULT_DAILY_QUOTA,
+            "monthly_quota": monthly_quota or DEFAULT_MONTHLY_QUOTA,
+            "usage": {
+                "daily": {},
+                "monthly": {},
+                "total": 0
+            },
+            "created_at": datetime.now().isoformat(),
+            "last_login": None
+        }
+        self.save_database()
+        return True, "User created successfully"
+    
+    def authenticate_user(self, username, password):
+        """Authenticate user credentials."""
+        if username not in self.data["users"]:
+            return False, "User not found"
+        
+        user = self.data["users"][username]
+        if user["password_hash"] != self.hash_password(password):
+            return False, "Incorrect password"
+        
+        # Update last login
+        user["last_login"] = datetime.now().isoformat()
+        self.save_database()
+        return True, "Authentication successful"
+    
+    def check_quota(self, username, num_files):
+        """Check if user has sufficient quota for download."""
+        if username not in self.data["users"]:
+            return False, "User not found"
+        
+        user = self.data["users"][username]
+        today = datetime.now().strftime("%Y-%m-%d")
+        current_month = datetime.now().strftime("%Y-%m")
+        
+        # Get current usage
+        daily_usage = user["usage"]["daily"].get(today, 0)
+        monthly_usage = user["usage"]["monthly"].get(current_month, 0)
+        
+        # Check limits
+        if daily_usage + num_files > user["daily_quota"]:
+            remaining = user["daily_quota"] - daily_usage
+            return False, f"Daily quota exceeded. Remaining: {remaining} files"
+        
+        if monthly_usage + num_files > user["monthly_quota"]:
+            remaining = user["monthly_quota"] - monthly_usage
+            return False, f"Monthly quota exceeded. Remaining: {remaining} files"
+        
+        return True, "Quota available"
+    
+    def update_usage(self, username, num_files):
+        """Update user's download usage."""
+        if username not in self.data["users"]:
+            return False
+        
+        user = self.data["users"][username]
+        today = datetime.now().strftime("%Y-%m-%d")
+        current_month = datetime.now().strftime("%Y-%m")
+        
+        # Update usage
+        user["usage"]["daily"][today] = user["usage"]["daily"].get(today, 0) + num_files
+        user["usage"]["monthly"][current_month] = user["usage"]["monthly"].get(current_month, 0) + num_files
+        user["usage"]["total"] += num_files
+        
+        self.save_database()
+        return True
+    
+    def get_user_stats(self, username):
+        """Get user's quota and usage statistics."""
+        if username not in self.data["users"]:
+            return None
+        
+        user = self.data["users"][username]
+        today = datetime.now().strftime("%Y-%m-%d")
+        current_month = datetime.now().strftime("%Y-%m")
+        
+        daily_usage = user["usage"]["daily"].get(today, 0)
+        monthly_usage = user["usage"]["monthly"].get(current_month, 0)
+        
+        return {
+            "username": username,
+            "email": user["email"],
+            "daily_quota": user["daily_quota"],
+            "daily_usage": daily_usage,
+            "daily_remaining": user["daily_quota"] - daily_usage,
+            "monthly_quota": user["monthly_quota"],
+            "monthly_usage": monthly_usage,
+            "monthly_remaining": user["monthly_quota"] - monthly_usage,
+            "total_downloads": user["usage"]["total"],
+            "created_at": user["created_at"],
+            "last_login": user["last_login"]
+        }
+    
+    def update_user_quota(self, username, daily_quota=None, monthly_quota=None):
+        """Update user's quota limits (admin function)."""
+        if username not in self.data["users"]:
+            return False, "User not found"
+        
+        user = self.data["users"][username]
+        if daily_quota is not None:
+            user["daily_quota"] = daily_quota
+        if monthly_quota is not None:
+            user["monthly_quota"] = monthly_quota
+        
+        self.save_database()
+        return True, "Quota updated successfully"
+    
+    def list_all_users(self):
+        """List all users (admin function)."""
+        return list(self.data["users"].keys())
+    
+    def verify_admin(self, password):
+        """Verify admin password."""
+        return self.hash_password(password) == self.data["admin_hash"]
 
 # Function to handle shapefile upload
 def handle_shapefile_upload(zip_bytes):
@@ -136,6 +292,126 @@ def create_download_zip(output_dir, zip_filename):
 def main():
     st.title("GPM IMERGDL V7 Downloader and Extractor v1.0")
     st.write("Download, extract, and analyze GPM IMERGDL V7 data for a specified date range and area.")
+    
+    # Initialize quota manager
+    quota_manager = QuotaManager()
+    
+    # Session state initialization
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+        st.session_state.username = None
+    
+    # Sidebar for user authentication and quota management
+    with st.sidebar:
+        st.header("User Authentication")
+        
+        if not st.session_state.logged_in:
+            tab1, tab2, tab3 = st.tabs(["Login", "Register", "Admin"])
+            
+            # Login Tab
+            with tab1:
+                st.subheader("Login")
+                login_username = st.text_input("Username", key="login_user")
+                login_password = st.text_input("Password", type="password", key="login_pass")
+                
+                if st.button("Login"):
+                    success, message = quota_manager.authenticate_user(login_username, login_password)
+                    if success:
+                        st.session_state.logged_in = True
+                        st.session_state.username = login_username
+                        st.success(message)
+                        st.rerun()
+                    else:
+                        st.error(message)
+            
+            # Registration Tab
+            with tab2:
+                st.subheader("Register New User")
+                reg_username = st.text_input("Username", key="reg_user")
+                reg_email = st.text_input("Email", key="reg_email")
+                reg_password = st.text_input("Password", type="password", key="reg_pass")
+                reg_password_confirm = st.text_input("Confirm Password", type="password", key="reg_pass_confirm")
+                
+                if st.button("Register"):
+                    if not all([reg_username, reg_email, reg_password]):
+                        st.error("Please fill in all fields")
+                    elif reg_password != reg_password_confirm:
+                        st.error("Passwords do not match")
+                    elif len(reg_password) < 6:
+                        st.error("Password must be at least 6 characters")
+                    else:
+                        success, message = quota_manager.create_user(reg_username, reg_email, reg_password)
+                        if success:
+                            st.success(f"{message}. Default quota: {DEFAULT_DAILY_QUOTA} daily, {DEFAULT_MONTHLY_QUOTA} monthly")
+                        else:
+                            st.error(message)
+            
+            # Admin Tab
+            with tab3:
+                st.subheader("Admin Panel")
+                admin_password = st.text_input("Admin Password", type="password", key="admin_pass")
+                
+                if st.button("Access Admin Panel"):
+                    if quota_manager.verify_admin(admin_password):
+                        st.success("Admin access granted")
+                        st.session_state.admin_mode = True
+                    else:
+                        st.error("Invalid admin password")
+                
+                if st.session_state.get('admin_mode', False):
+                    st.write("---")
+                    st.write("**User Management**")
+                    users = quota_manager.list_all_users()
+                    selected_user = st.selectbox("Select User", users)
+                    
+                    if selected_user:
+                        user_stats = quota_manager.get_user_stats(selected_user)
+                        st.json(user_stats)
+                        
+                        new_daily = st.number_input("New Daily Quota", min_value=0, value=user_stats["daily_quota"])
+                        new_monthly = st.number_input("New Monthly Quota", min_value=0, value=user_stats["monthly_quota"])
+                        
+                        if st.button("Update Quota"):
+                            success, message = quota_manager.update_user_quota(selected_user, new_daily, new_monthly)
+                            if success:
+                                st.success(message)
+                            else:
+                                st.error(message)
+        
+        else:
+            # User is logged in - show stats and logout
+            st.success(f"Logged in as: **{st.session_state.username}**")
+            
+            user_stats = quota_manager.get_user_stats(st.session_state.username)
+            if user_stats:
+                st.write("---")
+                st.write("**Your Quota Status**")
+                st.metric("Daily Quota", f"{user_stats['daily_usage']}/{user_stats['daily_quota']}")
+                st.metric("Monthly Quota", f"{user_stats['monthly_usage']}/{user_stats['monthly_quota']}")
+                st.metric("Total Downloads", user_stats['total_downloads'])
+                
+                # Progress bars
+                daily_percent = (user_stats['daily_usage'] / user_stats['daily_quota']) * 100 if user_stats['daily_quota'] > 0 else 0
+                monthly_percent = (user_stats['monthly_usage'] / user_stats['monthly_quota']) * 100 if user_stats['monthly_quota'] > 0 else 0
+                
+                st.progress(min(daily_percent / 100, 1.0))
+                st.caption(f"Daily: {user_stats['daily_remaining']} remaining")
+                
+                st.progress(min(monthly_percent / 100, 1.0))
+                st.caption(f"Monthly: {user_stats['monthly_remaining']} remaining")
+            
+            st.write("---")
+            if st.button("Logout"):
+                st.session_state.logged_in = False
+                st.session_state.username = None
+                st.session_state.admin_mode = False
+                st.rerun()
+    
+    # Main content - only accessible when logged in
+    if not st.session_state.logged_in:
+        st.warning("⚠️ Please login or register to use the downloader.")
+        st.info("👈 Use the sidebar to login or create a new account.")
+        return
 
     # Inputs for date range and file uploads
     start_date = st.text_input("Start Date (YYYY-MM-DD)", value="2025-01-01")
@@ -147,6 +423,24 @@ def main():
         if not all([start_date, end_date, shapefile_zip, csv_file]):
             st.error("Please fill in all fields and upload all required files.")
             return
+        
+        # Calculate number of files to download
+        try:
+            dates = [datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=i) for i in range(
+                (datetime.strptime(end_date, "%Y-%m-%d") - datetime.strptime(start_date, "%Y-%m-%d")).days + 1)]
+            num_files = len(dates)
+        except Exception as e:
+            st.error(f"Invalid date format: {str(e)}")
+            return
+        
+        # Check quota before processing
+        quota_ok, quota_message = quota_manager.check_quota(st.session_state.username, num_files)
+        if not quota_ok:
+            st.error(f"❌ Quota Check Failed: {quota_message}")
+            st.warning(f"You are trying to download {num_files} files, but your quota is insufficient.")
+            return
+        
+        st.info(f"✅ Quota check passed. Processing {num_files} files...")
 
         download_dir = "IMERG_Downloads"
         os.makedirs(download_dir, exist_ok=True)
@@ -168,10 +462,11 @@ def main():
             st.write("Downloading and extracting data...")
             
             # Multi-threaded IMERG download
-            dates = [datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=i) for i in range(
-                (datetime.strptime(end_date, "%Y-%m-%d") - datetime.strptime(start_date, "%Y-%m-%d")).days + 1)]
-
             download_all_imerg(dates, download_dir, DEFAULT_TOKEN, bbox)
+            
+            # Update user quota after successful download
+            quota_manager.update_usage(st.session_state.username, num_files)
+            st.success(f"✅ Downloaded {num_files} files. Quota updated.")
 
             # Extract precipitation data
             output_excel = os.path.join(download_dir, "IMERG_Extracted.xlsx")

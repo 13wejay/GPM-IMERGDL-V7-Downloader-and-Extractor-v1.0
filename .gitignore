@@ -172,3 +172,14 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Docs
+docs/QUICKSTART_QUOTA.md
+docs/QUOTA_SYSTEM.md
+docs/IMPLEMENTATION_SUMMARY.md
+docs/WORKFLOW_DIAGRAMS.md
+docs/CONFIG_TEMPLATE.md
+docs/DOCUMENTATION_INDEX.md
+
+# Example
+example/example_quota_usage.py
