@@ -136,6 +136,12 @@ ENV/
 env.bak/
 venv.bak/
 
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Quota database
+quota_database.json
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -174,12 +180,7 @@ cython_debug/
 .pypirc
 
 # Docs
-docs/QUICKSTART_QUOTA.md
-docs/QUOTA_SYSTEM.md
-docs/IMPLEMENTATION_SUMMARY.md
-docs/WORKFLOW_DIAGRAMS.md
-docs/CONFIG_TEMPLATE.md
-docs/DOCUMENTATION_INDEX.md
+docs/
 
 # Example
-example/example_quota_usage.py
+example/
