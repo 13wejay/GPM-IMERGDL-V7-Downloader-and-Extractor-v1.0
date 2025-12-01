@@ -172,3 +172,30 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# User Authentication System - Sensitive Data
+users.json
+
+# Downloaded IMERG data
+IMERG_Downloads/
+*.nc4
+
+# Shapefile extraction
+shapefile_extract/
+
+# Excel output files
+*.xlsx
+
+# Streamlit
+.streamlit/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
