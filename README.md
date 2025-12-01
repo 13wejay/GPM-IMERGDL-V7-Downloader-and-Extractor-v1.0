@@ -48,27 +48,22 @@ The application now includes a comprehensive quota management system:
 
 #### For New Users:
 1. **Register** in the sidebar with username, email, and password
-2. Default quotas: 100 files/day, 1000 files/month
+2. Default quotas: 10 files/day, 100 files/month
 3. **Login** to access the downloader
 4. Monitor your quota usage in real-time
 
 #### Upgrade Your Plan 💳:
 Need more quota? Choose from our flexible pricing tiers:
-- **Free**: 100 daily / 1,000 monthly - $0/month
-- **Standard**: 500 daily / 5,000 monthly - $9.99/month
-- **Professional**: 2,000 daily / 20,000 monthly - $29.99/month
-- **Enterprise**: 10,000 daily / 100,000 monthly - $99.99/month
+- **Gratis**: 10 daily / 100 monthly - $0/month or Rp0/bulan
+- **Standar**: 100 daily / 500 monthly - $9.99/month or Rp 150,000/bulan
+- **Profesional**: 5000 daily / 1000 monthly - $29.99/month or Rp450,000/bulan
+- **Enterprise**: 1,000 daily / 5,000 monthly - $99.99/month or Rp1,500,000/bulan
 
 **Upgrade in seconds**:
 1. Login to your account
 2. Click "View All Plans & Upgrade" in sidebar
 3. Select your tier and complete payment
 4. Instant activation!
-
-#### For Admins:
-1. Access the **Admin Panel** with password: `admin123` (⚠️ change this!)
-2. View all users and their statistics
-3. Modify user quotas as needed
 
 ### Required Inputs
 - **NASA Earthdata credentials** (set up in `.env` or Streamlit UI)
