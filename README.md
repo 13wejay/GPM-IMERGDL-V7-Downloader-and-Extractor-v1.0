@@ -56,7 +56,7 @@ The application now includes a comprehensive quota management system:
 Need more quota? Choose from our flexible pricing tiers:
 - **Gratis**: 10 daily / 100 monthly - $0/month or Rp0/bulan
 - **Standar**: 100 daily / 500 monthly - $9.99/month or Rp 150,000/bulan
-- **Profesional**: 5000 daily / 1000 monthly - $29.99/month or Rp450,000/bulan
+- **Profesional**: 500 daily / 1,000 monthly - $29.99/month or Rp450,000/bulan
 - **Enterprise**: 1,000 daily / 5,000 monthly - $99.99/month or Rp1,500,000/bulan
 
 **Upgrade in seconds**:
