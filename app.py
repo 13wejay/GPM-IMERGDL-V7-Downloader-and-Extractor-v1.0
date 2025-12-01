@@ -28,8 +28,8 @@ DEFAULT_TOKEN = "eyJ0eXAiOiJKV1QiLCJvcmlnaW4iOiJFYXJ0aGRhdGEgTG9naW4iLCJzaWciOiJ
 
 # Quota System Configuration
 QUOTA_DB_FILE = "quota_database.json"
-DEFAULT_DAILY_QUOTA = 100  # Default daily download limit (number of files)
-DEFAULT_MONTHLY_QUOTA = 1000  # Default monthly download limit (number of files)
+DEFAULT_DAILY_QUOTA = 10  # Default daily download limit (number of files)
+DEFAULT_MONTHLY_QUOTA = 100  # Default monthly download limit (number of files)
 ADMIN_PASSWORD = "wijaya13"  # Change this in production!
 
 # Payment & Subscription Tiers (Indonesian Rupiah - IDR)
@@ -848,3 +848,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
