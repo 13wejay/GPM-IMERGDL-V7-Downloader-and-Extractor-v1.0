@@ -32,6 +32,54 @@ DEFAULT_DAILY_QUOTA = 100  # Default daily download limit (number of files)
 DEFAULT_MONTHLY_QUOTA = 1000  # Default monthly download limit (number of files)
 ADMIN_PASSWORD = "wijaya13"  # Change this in production!
 
+# Payment & Subscription Tiers (Indonesian Rupiah - IDR)
+PAYMENT_TIERS = {
+    "free": {
+        "name": "Gratis",
+        "price": 0,
+        "price_idr": 0,
+        "daily_quota": 10,
+        "monthly_quota": 100,
+        "description": "Akses dasar untuk pengguna individu"
+    },
+    "standard": {
+        "name": "Standar",
+        "price": 9.99,
+        "price_idr": 150000,  # ~Rp 150,000/bulan
+        "daily_quota": 100,
+        "monthly_quota": 500,
+        "description": "Kuota lebih tinggi untuk pengguna reguler"
+    },
+    "professional": {
+        "name": "Profesional",
+        "price": 29.99,
+        "price_idr": 450000,  # ~Rp 450,000/bulan
+        "daily_quota": 500,
+        "monthly_quota": 1000,
+        "description": "Kuota tinggi untuk profesional"
+    },
+    "enterprise": {
+        "name": "Enterprise",
+        "price": 99.99,
+        "price_idr": 1500000,  # ~Rp 1,500,000/bulan
+        "daily_quota": 1000,
+        "monthly_quota": 5000,
+        "description": "Akses untuk perusahaan dan organisasi besar"
+    }
+}
+
+# Midtrans Payment Gateway Configuration
+# Configure credentials in Streamlit secrets (.streamlit/secrets.toml)
+# For local: Create .streamlit/secrets.toml file
+# For Streamlit Cloud: Add secrets in App settings > Secrets
+PAYMENT_ENABLED = True
+PAYMENT_GATEWAY = "midtrans"
+MIDTRANS_MERCHANT_ID = st.secrets.get("MIDTRANS_MERCHANT_ID", "")
+MIDTRANS_SERVER_KEY = st.secrets.get("MIDTRANS_SERVER_KEY", "")
+MIDTRANS_CLIENT_KEY = st.secrets.get("MIDTRANS_CLIENT_KEY", "")
+MIDTRANS_IS_PRODUCTION = st.secrets.get("MIDTRANS_IS_PRODUCTION", True)
+MIDTRANS_SNAP_URL = "https://app.midtrans.com/snap/v1/transactions" if MIDTRANS_IS_PRODUCTION else "https://app.sandbox.midtrans.com/snap/v1/transactions"
+
 # Quota Management Class
 class QuotaManager:
     def __init__(self, db_file=QUOTA_DB_FILE):
@@ -65,6 +113,8 @@ class QuotaManager:
             "password_hash": self.hash_password(password),
             "daily_quota": daily_quota or DEFAULT_DAILY_QUOTA,
             "monthly_quota": monthly_quota or DEFAULT_MONTHLY_QUOTA,
+            "subscription_tier": "free",
+            "payment_history": [],
             "usage": {
                 "daily": {},
                 "monthly": {},
@@ -178,6 +228,141 @@ class QuotaManager:
     def verify_admin(self, password):
         """Verify admin password."""
         return self.hash_password(password) == self.data["admin_hash"]
+    
+    def upgrade_subscription(self, username, tier):
+        """Upgrade user's subscription tier and update quotas."""
+        if username not in self.data["users"]:
+            return False, "User not found"
+        
+        if tier not in PAYMENT_TIERS:
+            return False, "Invalid subscription tier"
+        
+        user = self.data["users"][username]
+        tier_info = PAYMENT_TIERS[tier]
+        
+        # Update subscription
+        user["subscription_tier"] = tier
+        user["daily_quota"] = tier_info["daily_quota"]
+        user["monthly_quota"] = tier_info["monthly_quota"]
+        
+        # Record payment
+        payment_record = {
+            "date": datetime.now().isoformat(),
+            "tier": tier,
+            "amount": tier_info["price"],
+            "description": f"Upgraded to {tier_info['name']}"
+        }
+        
+        if "payment_history" not in user:
+            user["payment_history"] = []
+        user["payment_history"].append(payment_record)
+        
+        self.save_database()
+        return True, f"Successfully upgraded to {tier_info['name']} tier"
+    
+    def get_subscription_info(self, username):
+        """Get user's current subscription information."""
+        if username not in self.data["users"]:
+            return None
+        
+        user = self.data["users"][username]
+        tier = user.get("subscription_tier", "free")
+        tier_info = PAYMENT_TIERS.get(tier, PAYMENT_TIERS["free"])
+        
+        return {
+            "current_tier": tier,
+            "tier_name": tier_info["name"],
+            "price": tier_info["price"],
+            "price_idr": tier_info.get("price_idr", 0),
+            "daily_quota": user["daily_quota"],
+            "monthly_quota": user["monthly_quota"],
+            "payment_history": user.get("payment_history", [])
+        }
+
+# Midtrans Payment Gateway Functions
+def create_midtrans_transaction(username, email, tier_key):
+    """Create Midtrans Snap transaction for subscription upgrade."""
+    tier_info = PAYMENT_TIERS.get(tier_key)
+    if not tier_info or tier_info["price_idr"] == 0:
+        return None, "Invalid tier or free tier selected"
+    
+    # Generate unique order ID
+    order_id = f"SUB-{username}-{tier_key}-{int(datetime.now().timestamp())}"
+    
+    # Prepare transaction data
+    transaction_data = {
+        "transaction_details": {
+            "order_id": order_id,
+            "gross_amount": tier_info["price_idr"]
+        },
+        "customer_details": {
+            "first_name": username,
+            "email": email
+        },
+        "item_details": [
+            {
+                "id": tier_key,
+                "price": tier_info["price_idr"],
+                "quantity": 1,
+                "name": f"Subscription - {tier_info['name']}"
+            }
+        ],
+        "callbacks": {
+            "finish": "https://your-domain.com/payment/finish"  # Update with your domain
+        }
+    }
+    
+    # Create Snap transaction
+    try:
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": f"Basic {get_midtrans_auth_string()}"
+        }
+        
+        response = requests.post(
+            MIDTRANS_SNAP_URL,
+            json=transaction_data,
+            headers=headers,
+            timeout=30
+        )
+        
+        if response.status_code == 201:
+            result = response.json()
+            return result.get("token"), order_id
+        else:
+            return None, f"Error: {response.text}"
+    
+    except Exception as e:
+        return None, f"Connection error: {str(e)}"
+
+def get_midtrans_auth_string():
+    """Get base64 encoded auth string for Midtrans."""
+    import base64
+    auth_string = f"{MIDTRANS_SERVER_KEY}:"
+    return base64.b64encode(auth_string.encode()).decode()
+
+def verify_midtrans_payment(order_id):
+    """Verify payment status from Midtrans."""
+    try:
+        status_url = f"https://api.{'midtrans' if MIDTRANS_IS_PRODUCTION else 'sandbox.midtrans'}.com/v2/{order_id}/status"
+        
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": f"Basic {get_midtrans_auth_string()}"
+        }
+        
+        response = requests.get(status_url, headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            result = response.json()
+            return result.get("transaction_status"), result
+        else:
+            return None, None
+    
+    except Exception as e:
+        return None, None
 
 # Function to handle shapefile upload
 def handle_shapefile_upload(zip_bytes):
@@ -382,6 +567,15 @@ def main():
             # User is logged in - show stats and logout
             st.success(f"Logged in as: **{st.session_state.username}**")
             
+            # Get subscription info
+            sub_info = quota_manager.get_subscription_info(st.session_state.username)
+            if sub_info:
+                current_tier = sub_info["current_tier"]
+                tier_badge = f"🏷️ **{sub_info['tier_name']}**"
+                if current_tier != "free":
+                    tier_badge += f" (Rp {sub_info['price_idr']:,.0f}/bulan)"
+                st.markdown(tier_badge)
+            
             user_stats = quota_manager.get_user_stats(st.session_state.username)
             if user_stats:
                 st.write("---")
@@ -400,11 +594,154 @@ def main():
                 st.progress(min(monthly_percent / 100, 1.0))
                 st.caption(f"Monthly: {user_stats['monthly_remaining']} remaining")
             
+            # Upgrade Subscription Section
+            if PAYMENT_ENABLED:
+                st.write("---")
+                st.write("**💳 Upgrade Your Plan**")
+                
+                with st.expander("View All Plans & Upgrade", expanded=False):
+                    # Display pricing tiers
+                    cols = st.columns(len(PAYMENT_TIERS))
+                    
+                    for idx, (tier_key, tier_info) in enumerate(PAYMENT_TIERS.items()):
+                        with cols[idx]:
+                            is_current = sub_info and sub_info["current_tier"] == tier_key
+                            
+                            # Card styling
+                            if is_current:
+                                st.markdown(f"### ✅ {tier_info['name']}")
+                            else:
+                                st.markdown(f"### {tier_info['name']}")
+                            
+                            if tier_info['price_idr'] > 0:
+                                st.markdown(f"**Rp {tier_info['price_idr']:,.0f}/bulan**")
+                            else:
+                                st.markdown("**Gratis**")
+                            
+                            st.caption(tier_info['description'])
+                            st.write(f"📊 Harian: {tier_info['daily_quota']:,} file")
+                            st.write(f"📊 Bulanan: {tier_info['monthly_quota']:,} file")
+                            
+                            # Upgrade button
+                            if not is_current and tier_info['price_idr'] > 0:
+                                if st.button(f"Upgrade ke {tier_info['name']}", key=f"upgrade_{tier_key}"):
+                                    st.session_state.selected_tier = tier_key
+                                    st.session_state.show_payment = True
+                                    st.rerun()
+                            elif is_current:
+                                st.success("Paket Aktif")
+                    
+                    # Payment modal - Midtrans Integration
+                    if st.session_state.get('show_payment', False):
+                        selected_tier = st.session_state.get('selected_tier')
+                        tier_info = PAYMENT_TIERS[selected_tier]
+                        
+                        st.write("---")
+                        st.write(f"### 💳 Pembayaran untuk {tier_info['name']}")
+                        st.info(f"💰 Total: **Rp {tier_info['price_idr']:,.0f}** per bulan")
+                        
+                        st.write("**Metode Pembayaran Midtrans:**")
+                        st.write("✅ Transfer Bank (BCA, Mandiri, BNI, BRI, Permata)")
+                        st.write("✅ E-Wallet (GoPay, OVO, DANA, ShopeePay, LinkAja)")
+                        st.write("✅ Kartu Kredit/Debit (Visa, MasterCard, JCB)")
+                        st.write("✅ Convenience Store (Indomaret, Alfamart)")
+                        st.write("✅ QRIS")
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.button("🚀 Lanjutkan ke Pembayaran", type="primary"):
+                                with st.spinner("Membuat transaksi pembayaran..."):
+                                    # Get user email
+                                    user_data = quota_manager.data["users"].get(st.session_state.username, {})
+                                    user_email = user_data.get("email", "")
+                                    
+                                    # Create Midtrans transaction
+                                    snap_token, order_id = create_midtrans_transaction(
+                                        st.session_state.username,
+                                        user_email,
+                                        selected_tier
+                                    )
+                                    
+                                    if snap_token:
+                                        st.session_state.snap_token = snap_token
+                                        st.session_state.order_id = order_id
+                                        
+                                        # Display Midtrans Snap popup
+                                        st.success("✅ Transaksi berhasil dibuat!")
+                                        st.write("**Klik tombol di bawah untuk membuka halaman pembayaran Midtrans:**")
+                                        
+                                        # Midtrans Snap popup integration
+                                        midtrans_url = f"https://app.{'midtrans' if MIDTRANS_IS_PRODUCTION else 'sandbox.midtrans'}.com/snap/v2/vtweb/{snap_token}"
+                                        
+                                        st.markdown(f"""
+                                        <a href="{midtrans_url}" target="_blank">
+                                            <button style="background-color:#4CAF50;color:white;padding:15px 32px;text-align:center;font-size:16px;border:none;border-radius:4px;cursor:pointer;">
+                                                🔐 Bayar Sekarang dengan Midtrans
+                                            </button>
+                                        </a>
+                                        """, unsafe_allow_html=True)
+                                        
+                                        st.write("---")
+                                        st.write("**Status Pembayaran:**")
+                                        st.write(f"Order ID: `{order_id}`")
+                                        
+                                        if st.button("✅ Saya Sudah Bayar - Verifikasi Sekarang"):
+                                            with st.spinner("Memverifikasi pembayaran..."):
+                                                status, result = verify_midtrans_payment(order_id)
+                                                
+                                                if status in ["settlement", "capture"]:
+                                                    # Payment successful - upgrade user
+                                                    success, message = quota_manager.upgrade_subscription(
+                                                        st.session_state.username,
+                                                        selected_tier
+                                                    )
+                                                    
+                                                    if success:
+                                                        st.success(f"🎉 {message}")
+                                                        st.balloons()
+                                                        st.session_state.show_payment = False
+                                                        st.session_state.selected_tier = None
+                                                        st.session_state.snap_token = None
+                                                        st.session_state.order_id = None
+                                                        st.rerun()
+                                                    else:
+                                                        st.error(message)
+                                                elif status == "pending":
+                                                    st.warning("⏳ Pembayaran masih menunggu. Silakan selesaikan pembayaran terlebih dahulu.")
+                                                elif status == "deny":
+                                                    st.error("❌ Pembayaran ditolak. Silakan coba lagi.")
+                                                elif status == "cancel" or status == "expire":
+                                                    st.error("❌ Pembayaran dibatalkan atau kadaluarsa.")
+                                                else:
+                                                    st.info(f"Status: {status or 'Belum ada pembayaran'}")
+                                    else:
+                                        st.error(f"❌ Gagal membuat transaksi: {order_id}")
+                        
+                        with col2:
+                            if st.button("Batal"):
+                                st.session_state.show_payment = False
+                                st.session_state.selected_tier = None
+                                st.session_state.snap_token = None
+                                st.session_state.order_id = None
+                                st.rerun()
+                        
+                        st.caption("🔒 Pembayaran aman dengan Midtrans | Data kartu Anda tidak disimpan")
+                    
+                    # Payment history
+                    if sub_info and sub_info.get('payment_history'):
+                        st.write("---")
+                        st.write("**📜 Riwayat Pembayaran**")
+                        for payment in reversed(sub_info['payment_history'][-5:]):  # Show last 5
+                            payment_date = datetime.fromisoformat(payment['date']).strftime("%Y-%m-%d %H:%M")
+                            st.text(f"{payment_date} | {payment['description']} | Rp {payment.get('amount', 0) * 15000:,.0f}")
+            
             st.write("---")
             if st.button("Logout"):
                 st.session_state.logged_in = False
                 st.session_state.username = None
                 st.session_state.admin_mode = False
+                st.session_state.show_payment = False
+                st.session_state.selected_tier = None
                 st.rerun()
     
     # Main content - only accessible when logged in
@@ -436,8 +773,32 @@ def main():
         # Check quota before processing
         quota_ok, quota_message = quota_manager.check_quota(st.session_state.username, num_files)
         if not quota_ok:
-            st.error(f"❌ Quota Check Failed: {quota_message}")
-            st.warning(f"You are trying to download {num_files} files, but your quota is insufficient.")
+            st.error(f"❌ Kuota Habis: {quota_message}")
+            st.warning(f"Anda mencoba download {num_files} file, tetapi kuota Anda tidak mencukupi.")
+            
+            # Suggest upgrade if payment is enabled
+            if PAYMENT_ENABLED:
+                st.info("💡 **Butuh kuota lebih?** Upgrade paket Anda untuk mendapatkan limit lebih tinggi!")
+                
+                # Get current tier and suggest next tier
+                sub_info = quota_manager.get_subscription_info(st.session_state.username)
+                current_tier = sub_info["current_tier"] if sub_info else "free"
+                
+                # Find suitable tier for the request
+                suggested_tier = None
+                for tier_key, tier_info in PAYMENT_TIERS.items():
+                    if tier_info["daily_quota"] >= num_files and tier_key != current_tier:
+                        suggested_tier = tier_key
+                        break
+                
+                if suggested_tier:
+                    tier_info = PAYMENT_TIERS[suggested_tier]
+                    st.success(f"✨ Rekomendasi: Paket **{tier_info['name']}** - {tier_info['daily_quota']:,} file/hari seharga Rp {tier_info['price_idr']:,.0f}/bulan")
+                    if st.button("🚀 Upgrade Sekarang"):
+                        st.session_state.selected_tier = suggested_tier
+                        st.session_state.show_payment = True
+                        st.rerun()
+            
             return
         
         st.info(f"✅ Quota check passed. Processing {num_files} files...")
