@@ -14,9 +14,11 @@ This repository contains a Python-based tool for downloading and extracting GPM 
 - 🔍 **CSV Coordinate Extraction**: Extracts precipitation values based on provided CSV points.
 - 📊 **Formatted Excel Output**: Saves data in a structured multi-row format.
 - 🖥 **Streamlit UI**: Provides a user-friendly interface.
-- 🔐 **User Authentication & Quota System**: Track and limit downloads per user (NEW!)
-- 📈 **Usage Monitoring**: Real-time quota tracking with daily and monthly limits (NEW!)
-- 👨‍💼 **Admin Panel**: Manage users and quotas (NEW!)
+- 🔐 **User Authentication & Quota System**: Track and limit downloads per user
+- 📈 **Usage Monitoring**: Real-time quota tracking with daily and monthly limits
+- 👨‍💼 **Admin Panel**: Manage users and quotas
+- 💳 **Payment & Subscriptions**: Upgrade quota limits with flexible pricing tiers (NEW!)
+- 🎁 **Multiple Tiers**: Free, Standard, Professional, and Enterprise plans (NEW!)
 
 ## Installation
 Ensure you have Python 3.10+ installed, then clone this repository:
@@ -50,15 +52,23 @@ The application now includes a comprehensive quota management system:
 3. **Login** to access the downloader
 4. Monitor your quota usage in real-time
 
+#### Upgrade Your Plan 💳:
+Need more quota? Choose from our flexible pricing tiers:
+- **Free**: 100 daily / 1,000 monthly - $0/month
+- **Standard**: 500 daily / 5,000 monthly - $9.99/month
+- **Professional**: 2,000 daily / 20,000 monthly - $29.99/month
+- **Enterprise**: 10,000 daily / 100,000 monthly - $99.99/month
+
+**Upgrade in seconds**:
+1. Login to your account
+2. Click "View All Plans & Upgrade" in sidebar
+3. Select your tier and complete payment
+4. Instant activation!
+
 #### For Admins:
 1. Access the **Admin Panel** with password: `admin123` (⚠️ change this!)
 2. View all users and their statistics
 3. Modify user quotas as needed
-
-📚 **Documentation:**
-- **Start Here**: [Documentation Index](DOCUMENTATION_INDEX.md) - Complete guide to all docs
-- Quick Start: See [docs/QUICKSTART_QUOTA.md](docs/QUICKSTART_QUOTA.md)
-- Full Documentation: See [docs/QUOTA_SYSTEM.md](docs/QUOTA_SYSTEM.md)
 
 ### Required Inputs
 - **NASA Earthdata credentials** (set up in `.env` or Streamlit UI)
